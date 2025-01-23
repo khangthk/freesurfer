@@ -174,7 +174,8 @@ MRI_REGION ;
 struct VOL_GEOM;
 class  FStagsIO;
 
-MATRIX *MRIxfmCRS2XYZ( const VOL_GEOM *mri, int base ); /* Native Vox2RAS Matrix (scanner and xfm too) */
+MATRIX *MRIxfmCRS2XYZ( const VOL_GEOM *mri, int base, bool useshear=false ); /* Native Vox2RAS Matrix (scanner and xfm too) */
+int MRIsetVox2RASFromMatrix(VOL_GEOM *mri, MATRIX *m_vox2ras);
 MATRIX *MRIxfmCRS2XYZtkreg( const VOL_GEOM *mri );      // TkReg  Vox2RAS Matrix
 MATRIX *VGras2tkreg(VOL_GEOM *vg, MATRIX *ras2tkreg);
 MATRIX *VGtkreg2RAS(VOL_GEOM *vg, MATRIX *tkreg2ras);
@@ -197,6 +198,7 @@ struct VOL_GEOM
   float y_r =  0, y_a = 0, y_s = -1;
   float z_r =  0, z_a = 1, z_s =  0;
   float c_r =  0, c_a = 0, c_s =  0;
+  float s_r =  0, s_a = 0, s_s =  0;  // the shear components
   char  fname[STRLEN] = {'\0'};  // volume filename
 
   // i_to_r__, r_to_i__, register_mat were moved here from MRI in this commit:
@@ -208,8 +210,8 @@ struct VOL_GEOM
   // The functions below compute these matrices on-the-fly
   // RAS = scanner RAS (sometimes known as "real" RAS in surface contexts)
   // TkregRAS = RAS used by tkregister; surface coords are by default in this TkregRAS space
-  MATRIX *get_Vox2RAS(int base=0){       return(MRIxfmCRS2XYZ(this,base));}
-  MATRIX *get_RAS2Vox(int base=0){       return(MatrixInverse(get_Vox2RAS(base),NULL));}
+  MATRIX *get_Vox2RAS(int base=0, bool useshear=false){       return(MRIxfmCRS2XYZ(this,base,useshear));}
+  MATRIX *get_RAS2Vox(int base=0, bool useshear=false){       return(MatrixInverse(get_Vox2RAS(base, useshear),NULL));}
   MATRIX *get_Vox2TkregRAS(void){  return(MRIxfmCRS2XYZtkreg(this));}
   MATRIX *get_TkregRAS2Vox(void){  return(MatrixInverse(get_Vox2TkregRAS(),NULL));}
   MATRIX *get_RAS2TkregRAS(void){  return(VGras2tkreg(this, NULL));}
@@ -241,8 +243,17 @@ struct VOL_GEOM
     c_r = vg.c_r;
     c_a = vg.c_a;
     c_s = vg.c_s;
+    s_r = vg.s_r;
+    s_a = vg.s_a;
+    s_s = vg.s_s;    
     
     strcpy(fname, vg.fname);
+
+    if (vg.i_to_r__)
+      i_to_r__ = AffineMatrixCopy(vg.i_to_r__, i_to_r__);
+
+    if (vg.r_to_i__)
+      r_to_i__ = MatrixCopy(vg.r_to_i__, r_to_i__);
 
 #if 0
     // ??? valid and ras_good_flag mean the same thing ???
@@ -275,8 +286,17 @@ struct VOL_GEOM
     c_r = other.c_r;
     c_a = other.c_a;
     c_s = other.c_s;
+    s_r = other.s_r;
+    s_a = other.s_a;
+    s_s = other.s_s;    
     
     strcpy(fname, other.fname);
+
+    if (other.i_to_r__)
+      i_to_r__ = AffineMatrixCopy(other.i_to_r__, i_to_r__);
+
+    if (other.r_to_i__)
+      r_to_i__ = MatrixCopy(other.r_to_i__, r_to_i__);
 
 #if 0
     // ??? valid and ras_good_flag mean the same thing ???
@@ -299,6 +319,7 @@ struct VOL_GEOM
       fprintf(stdout, "y_(ras) : (%7.4f, %7.4f, %7.4f)\n", y_r, y_a, y_s);
       fprintf(stdout, "z_(ras) : (%7.4f, %7.4f, %7.4f)\n", z_r, z_a, z_s);
       fprintf(stdout, "c_(ras) : (%7.4f, %7.4f, %7.4f)\n", c_r, c_a, c_s);
+      fprintf(stdout, "shears  : (%7.4f, %7.4f, %7.4f)\n", s_r, s_a, s_s);      
       fprintf(stdout, "file    : %s\n", fname);
     }
     else
@@ -339,11 +360,14 @@ struct VOL_GEOM
     if (!FZEROTHR(vg1->c_r - vg2->c_r, thresh)) return (17);
     if (!FZEROTHR(vg1->c_a - vg2->c_a, thresh)) return (18);
     if (!FZEROTHR(vg1->c_s - vg2->c_s, thresh)) return (19);
+    if (!FZEROTHR(vg1->s_r - vg2->s_r, thresh)) return (20);
+    if (!FZEROTHR(vg1->s_a - vg2->s_a, thresh)) return (21);
+    if (!FZEROTHR(vg1->s_s - vg2->s_s, thresh)) return (22);    
     return (0);
   };
 
   // write VOL_GEOM to znzFile
-  void write(znzFile fp, bool niftiheaderext=false)
+  void write(znzFile fp, bool niftiheaderext=false, bool shearless=true)
   {
     znzwriteInt(valid, fp);
     znzwriteInt(width, fp);
@@ -364,6 +388,12 @@ struct VOL_GEOM
     znzwriteFloat(c_r, fp);
     znzwriteFloat(c_a, fp);
     znzwriteFloat(c_s, fp);
+    if (!shearless)
+    {
+      znzwriteFloat(s_r, fp);
+      znzwriteFloat(s_a, fp);
+      znzwriteFloat(s_s, fp);      
+    }
 
     int len_max = 512;    
     if (!niftiheaderext)
@@ -387,7 +417,7 @@ struct VOL_GEOM
   }
 
   // read VOL_GEOM from znzFile
-  void read(znzFile fp, bool niftiheaderext=false)
+  void read(znzFile fp, bool niftiheaderext=false, bool shearless=true)
   {
     valid = znzreadInt(fp);
     width = znzreadInt(fp);
@@ -408,6 +438,12 @@ struct VOL_GEOM
     c_r = znzreadFloat(fp);
     c_a = znzreadFloat(fp);
     c_s = znzreadFloat(fp);
+    if (!shearless)
+    {
+      s_r = znzreadFloat(fp);
+      s_a = znzreadFloat(fp);
+      s_s = znzreadFloat(fp);      
+    }
 
     int len_max = 512;
     if (!niftiheaderext)
@@ -438,6 +474,20 @@ struct VOL_GEOM
       }
     }
   }
+
+  // remove shears if it is greater than threshold
+  // recompute voxsize and rotation, set shears to zero
+  void shearless_components()
+  {
+    if (s_r > 1e-5 || s_a > 1e-5 || s_s > 1e-5)
+    {
+      // i_to_r__ may not be computed with shears
+      // compute affine matrix with shears
+      MATRIX *tmp = MRIxfmCRS2XYZ(this, 0, true);  // extract_i_to_r(this);
+      MRIsetVox2RASFromMatrix(this, tmp);
+      s_r = s_a = s_s = 0;
+    }
+  }
 };
 
 typedef VOL_GEOM VG;
@@ -445,8 +495,8 @@ typedef VOL_GEOM VG;
 #define MGH_VERSION 1   // this is the mgz format version
 
 // version number in .mgz will be constructed using these defines
-// ex.  ((MGZ_INTENT_WARPMAP     & 0xff ) << 8) | MGH_VERSION
-//      ((MGZ_INTENT_WARPMAP_INV & 0xff ) << 8) | MGH_VERSION
+// ex.  ((MGZ_INTENT_WARPMAP     & 0xffff ) << 8) | MGH_VERSION
+//      ((MGZ_INTENT_WARPMAP_INV & 0xffff ) << 8) | MGH_VERSION
 #define MGZ_INTENT_UNKNOWN     -1
 #define MGZ_INTENT_MRI          0
 #define MGZ_INTENT_LABEL        1
@@ -637,7 +687,6 @@ MATRIX *TkrRAS2VoxfromVolGeom(const VOL_GEOM *vg);
 
 MATRIX *MRIxfmCRS2XYZfsl(VOL_GEOM *mri);        // FSL/FLIRT  Vox2RAS Matrix
 
-int MRIsetVox2RASFromMatrix(VOL_GEOM *mri, MATRIX *m_vox2ras);
 int MRIsetVox2RASFromMatrixUnitTest(MRI *mri);
 MATRIX *MRItkRegMtxFromVox2Vox(VOL_GEOM *ref, VOL_GEOM *mov, MATRIX *vox2vox);//ras2ras from vox2vox
 MATRIX *MRItkReg2Native(VOL_GEOM *ref, VOL_GEOM *mov, MATRIX *R); /* tkreg2native (scanner and xfm too) */
@@ -987,6 +1036,7 @@ MRI   *MRIsetEdges(MRI *in, double SetVal, MRI *out);
 MRI   *MRIerode(MRI *mri_src, MRI *mri_dst) ;
 MRI   *MRIerodeNN(MRI *in, MRI *out, int NNDef, int ErodeEdges=0);
 MRI   *MRIerodeLabels(MRI *mri_src, MRI *mri_dst) ;
+MRI *MRIerodeAndReplaceLabel(MRI *seg, int segid, int replaceid, int topo, int iters, MRI *out);
 MRI   *MRIerodeThresh(MRI *mri_src, MRI *mri_intensity, double thresh,MRI *mri_dst) ;
 MRI   *MRIdilate6Thresh(MRI *mri_src, MRI *mri_intensity, double thresh, MRI *mri_dst) ;
 MRI   *MRIdilateThresh(MRI *mri_src, MRI *mri_intensity, double thresh, MRI *mri_dst) ;
@@ -1672,9 +1722,9 @@ MRI *MRIreadType(const char *fname, int type);
 MRI *MRIreadInfo(const char *fname);
 MRI *MRIreadHeader(const char *fname, int type);
 int GetSPMStartFrame(void);
-int MRIwrite(MRI *mri,const  char *fname, std::vector<MRI*> *mriVector=NULL);
+int MRIwrite(MRI *mri,const  char *fname, std::vector<MRI*> *mriVector=NULL, int intent=MGZ_INTENT_UNKNOWN);
 int MRIwriteFrame(MRI *mri,const  char *fname, int frame) ;
-int MRIwriteType(MRI *mri,const  char *fname, int type);
+int MRIwriteType(MRI *mri,const  char *fname, int type, int intent=MGZ_INTENT_UNKNOWN);
 MRI *MRIreadRaw(FILE *fp, int width, int height, int depth, int type);
 int MRIreorderVox2RAS(MRI *mri_src, MRI *mri_dst, int xdim, int ydim, int zdim);
 MRI *MRIreorder(MRI *mri_src, MRI *mri_dst, int xdim, int ydim, int zdim);
@@ -1795,7 +1845,7 @@ MATRIX *GetSurfaceRASToVoxelMatrix(VOL_GEOM *mri);
 
 // functions read/write MRI_MGH_FILE
 MRI *mghRead(const char *fname, int read_volume=TRUE, int frame=-1);
-int mghWrite(MRI *mri, const char *fname, int frame=-1);
+int mghWrite(MRI *mri, const char *fname, int frame=-1, int intent=MGZ_INTENT_UNKNOWN);
 
 /* Zero-padding for 3d analyze (ie, spm) format */
 #ifdef _MRIIO_SRC

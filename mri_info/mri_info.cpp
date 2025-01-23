@@ -1425,7 +1425,7 @@ void __reportWarp(MRI *mri, const char *fname)
          mri->warpFieldFormat == WarpfieldDTFMT::WARPFIELD_DTFMT_DISP_CRS ? "DISP_CRS" :
 	 mri->warpFieldFormat == WarpfieldDTFMT::WARPFIELD_DTFMT_ABS_RAS  ? "ABS_RAS"  :
 	 mri->warpFieldFormat == WarpfieldDTFMT::WARPFIELD_DTFMT_DISP_RAS ? "DISP_RAS" :
-	 "UNKNOWN", mri->type);
+	 "UNKNOWN", mri->warpFieldFormat);
   printf("       spacing: %d\n", mri->gcamorphSpacing);
   printf("       exp_k  : %.6f\n", mri->gcamorphExp_k);
 
@@ -1453,6 +1453,11 @@ void __reportWarp(MRI *mri, const char *fname)
   printf("              : x_s = %8.4f, y_s = %8.4f, z_s = %8.4f, "
          "c_s = %10.4f\n",
          mri->x_s, mri->y_s, mri->z_s, mri->c_s);
+
+  char ostr[5] = {'\0'};
+  MRIdircosToOrientationString(mri, ostr);
+  printf("Orientation   : %s\n", ostr);
+  printf("Primary Slice Direction: %s\n", MRIsliceDirectionName(mri));
     
   // VOL_GEOM::vgprint() prints to stderr
   printf("\n3D morph source geometry:\n");

@@ -725,12 +725,13 @@ static int parse_commandline(int argc, char **argv) {
       sscanf(pargv[0],"%d",&cmdargs->nitersmax);
       nargsused = 1;
     } 
-    else if (!strcasecmp(option, "--mat2par")) {
+    else if(!strcasecmp(option, "--mat2par") || !strcasecmp(option, "--mat2par-vox")) {
       if(nargc < 1) CMDargNErr(option,1);
       LTA *lta;
       lta = LTAread(pargv[0]);
       if(lta==NULL) exit(1);
-      LTAchangeType(lta,LINEAR_RAS_TO_RAS);
+      if(!strcasecmp(option, "--mat2par")) LTAchangeType(lta,LINEAR_RAS_TO_RAS);
+      if(!strcasecmp(option, "--mat2par-vox")) LTAchangeType(lta,LINEAR_VOX_TO_VOX);
       LTAinvert(lta,lta);
       double p[12];
       TranformExtractAffineParams(lta->xforms[0].m_L,p);
@@ -843,7 +844,7 @@ static int parse_commandline(int argc, char **argv) {
       nargsused = 2;
       exit(err);
     } 
-    else if (!strcasecmp(option, "--landmarks")) {
+    else if (!strcasecmp(option, "--landmarks") || !strcasecmp(option, "--landmarks-2d")) {
       // --landmarks sxyzfile txyzfile coords mov targ outreg
       if(nargc < 6) CMDargNErr(option,6);
       RegLandmarks rlm;
@@ -852,7 +853,9 @@ static int parse_commandline(int argc, char **argv) {
       rlm.coordtypename = pargv[2];
       rlm.mrisrcfile = pargv[3];
       rlm.mritrgfile = pargv[4];
-      LTA *lta = rlm.ComputeLTA();
+      LTA *lta=NULL;
+      if(!strcasecmp(option, "--landmarks")) lta = rlm.ComputeLTA();
+      else                                   lta = rlm.ComputeLTA(1);
       if(lta == NULL) exit(1);
       if(cmdargs->subject)  strncpy(lta->subject,cmdargs->subject,sizeof(lta->subject)-1);
       else                  strncpy(lta->subject,"unknown",       sizeof(lta->subject)-1);
@@ -1046,7 +1049,7 @@ static void print_usage(void) {
   printf("   --sat SatPct : saturation threshold, default %5.3le\n",cmdargs->SatPct);
   printf("   --conf-ref : conform the refernece without rescaling (good for gca)\n");
   printf("   --no-bf : do not do brute force search\n");
-  printf("   --bf-lim lim : constrain brute force search to +/-lim\n");
+  printf("   --bf-lim lim : constrain brute force search to +/-lim (%g)\n",cmdargs->BFLim);
   printf("   --bf-nsamp nsamples : number of samples in brute force search\n");
   printf("   --no-smooth : do not apply smoothing to either ref or mov\n");
   printf("   --ref-fwhm fwhm : apply smoothing to ref\n");
@@ -1054,16 +1057,19 @@ static void print_usage(void) {
   printf("   --no-mov-oob : do not count mov voxels that are out-of-bounds as 0 (default)\n");
   printf("   --init-reg-save initreg.lta : save initial registration\n");
   printf("   --init-reg-save-only initreg.lta : save initial registration and exit\n");
-  printf("   --mat2par reg.lta : extract parameters out of registration\n");
+  printf("   --mat2par reg.lta : extract parameters out of RAS2RAS registration (lta does not need to be RAS)\n");
+  printf("   --mat2par-vox reg.lta : extract parameters out of VOX2VOX registration (lta does not need to be VOX)\n");
   printf("   --mat2rot reg.lta rotreg.lta: convert registration to a pure rotation\n");
   printf("   --par2mat par1-par12 srcvol trgvol reg.lta : convert parameters to a  registration\n");
   printf("      the subject in the output reg.lta can be set with --s before --par2mat\n");
   printf("   --lrrev reg.lta reg.lrrev.lta : approx reg if you were to left-right rev the pix of the input image\n");
   printf("   --landmarks sxyz txyz coords mov targ outlta <xformedpointset>: convert landmarks to a registration\n");
-  printf("      sxyz and txyz are source and target coordinates at matching landmarks\n");
+  printf("       sxyz and txyz are source and target coordinates at matching landmarks\n");
+  printf("       coords are RAS, VOX, or TKR\n");
   printf("       STVP format is created with mris_apply_reg --stvp via MRISapplyReg() (call with sxyzfile stvp)\n");
   printf("       For json pointset (eg, from mri_segcentroids) just make sure both have .json extenstion\n");
   printf("       If xformedpointset is specified, it will write out a point set of the sxyz transformed by the LTA\n");
+  printf("   --landmarks-2d : same as --landmarks but extracts 2D (6dof) parameters into a 4x4 matrix\n");
   printf("   --rms radius filename reg1 reg2 : compute RMS diff between two registrations using MJ's method (rad ~= 50mm)\n");
   printf("      The rms will be written to filename; if filename == nofile, then no file is created\n");
   printf("   --movout movout volume : save the mov after all preprocessing\n");
@@ -2101,9 +2107,9 @@ int COREGoptBruteForce(COREG *coreg, double lim0, int niters, int n1d)
       pmin = coreg->params[nthp] - lim;
       pmax = coreg->params[nthp] + lim;
       pdelta = (pmax-pmin)/n1d;
-
-      nth1d = 0;
       popt = coreg->params[nthp];
+      if(coreg->debug) printf("iter=%d n1d=%d pno=%d nom=%g min=%g max=%g delta=%g\n",iter,n1d,nthp,popt,pmin,pmax,pdelta);
+      nth1d = 0;
       newmin = 0;
       for(p=pmin; p<=pmax; p+=pdelta){
 	coreg->params[nthp] = p;
@@ -2115,7 +2121,7 @@ int COREGoptBruteForce(COREG *coreg, double lim0, int niters, int n1d)
 	}
 	if(coreg->debug){
 	  printf("%2d %2d %3d",iter,nthp,nth1d);
-	  for(n=0; n<coreg->nparams; n++) printf("%9.5f ",coreg->params[n]);
+	  for(n=0; n<coreg->nparams; n++) printf("  %9.5f ",coreg->params[n]);
 	  printf("  %9.7f %9.7f\n",curcost,mincost);
 	  fflush(stdout);
 	}

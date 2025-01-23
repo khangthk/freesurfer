@@ -24,6 +24,7 @@
 #include <ctype.h>
 
 #include "mri.h"
+#include "mri2.h"
 #include "macros.h"
 #include "error.h"
 #include "diag.h"
@@ -33,6 +34,7 @@
 #include "utils.h"
 #include "timer.h"
 #include "version.h"
+#include "romp_support.h"
 
 int main(int argc, char *argv[]) ;
 static int get_option(int argc, char *argv[]) ;
@@ -577,6 +579,14 @@ get_option(int argc, char *argv[])
     fprintf
     (stderr, "computing sqrt of sum of squares instead of average (RMS)...\n") ;
   }
+  else if (!stricmp(option, "threads"))
+  {
+    #ifdef _OPENMP
+    int nthreads = atoi(argv[2]) ;
+    omp_set_num_threads(nthreads);
+    #endif
+    nargs = 1 ;
+  }
   else if (!stricmp(option, "conform"))
   {
     conform = 1 ;
@@ -615,6 +625,72 @@ get_option(int argc, char *argv[])
   else if (!stricmp(option, "help"))
   {
     usage_exit(0) ;
+  }
+  else if(!stricmp(option, "simple-average") || !stricmp(option, "simple-sum")){
+    //0=progname 1=arg 2=outvol 3=invol1 4=invol2 ...
+    if(argc < 4){
+      printf("-simple-average and -simple-sum need at least 2 args (output then invol1 ...)\n");
+      exit(1);
+    }
+    char *outvolpath = argv[2];
+    int ninputs = argc-3;
+    MRI *sum=NULL;
+    for(int n=3; n < argc; n++){
+      printf("Reading %d/%d %s\n",n-2,ninputs,argv[n]);
+      fflush(stdout);
+      if(n==3) {
+	sum = MRIread(argv[n]);
+	if(!sum) exit(1);
+	if(sum->type != MRI_FLOAT){
+	  printf("   changing type to float\n");
+	  MRI *tmp = MRIchangeType(sum, MRI_FLOAT, 0, 0, 1);
+	  MRIfree(&sum);
+	  sum = tmp;
+	}
+      }
+      else {
+	MRI *mri = MRIread(argv[n]);
+	if(!mri) exit(1);
+	int err = MRIdimMismatch(sum, mri, 1);
+	if(err) {
+	  printf("ERROR: dimension mismatch\n");
+	  exit(1);
+	}
+        #ifdef HAVE_OPENMP
+        #pragma omp parallel for 
+        #endif
+	for(int c=0; c < sum->width; c++){
+	  for(int r=0; r < sum->height; r++){
+	    for(int s=0; s < sum->depth; s++){
+	      for(int f=0; f < sum->nframes; f++){
+		double v0 = MRIgetVoxVal(sum,c,r,s,f);
+		double v = MRIgetVoxVal(mri,c,r,s,f);
+		MRIsetVoxVal(sum,c,r,s,f,v0+v);
+	      }
+	    }
+	  }
+	}
+	MRIfree(&mri);
+      } // if/else
+    } // loop over 
+    fflush(stdout);
+    if(!stricmp(option, "simple-average") && ninputs > 1){
+      printf("Computing average %d\n",ninputs);
+      for(int c=0; c < sum->width; c++){
+	for(int r=0; r < sum->height; r++){
+	  for(int s=0; s < sum->depth; s++){
+	    for(int f=0; f < sum->nframes; f++){
+	      double v = MRIgetVoxVal(sum,c,r,s,f);
+	      MRIsetVoxVal(sum,c,r,s,f,v/ninputs);
+	    }
+	  }
+	}
+      }
+    }
+    fflush(stdout);
+    printf("Writing output to %s\n",outvolpath);
+    int err = MRIwrite(sum,outvolpath);
+    exit(err);
   }
   else if (!stricmp(option, "noconform"))
   {
@@ -715,6 +791,9 @@ usage_exit(int code)
   printf("\t-p              compute %% \n");
   printf("\t-b <float th>   binarize the input volumes using threshold th \n");
   printf("\t-abs            take abs value of volume \n");
+  printf("\t-threads nthreads \n");
+  printf("\t-simple-sum outvol invol1 invol2 ... : stand-alone option to compute the sum\n");
+  printf("\t-simple-average outvol invol1 invol2 ... : stand-alone option to compute the average\n");
   exit(code) ;
 }
 

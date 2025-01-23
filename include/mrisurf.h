@@ -2109,6 +2109,7 @@ int MRISremoveCompressedRegions(MRI_SURFACE *mris, double min_dist) ;
 int  MRISweightedSoapBubbleVertexPositions(MRI_SURFACE *mris, int navgs) ;
 int MRIStaubinSmooth(MRI_SURFACE *mris, int niters, double lambda, double mu, int which) ;
 MRI_SURFACE *MRISconcat(MRI_SURFACE *mris1, MRI_SURFACE *mris2, MRI_SURFACE *mris) ;
+int MRISdiffSimple(MRIS *surf1, MRIS *surf2,  int ndiffmin, double rmsthresh, int verbosity);
 
 #define TAUBIN_UNIFORM_WEIGHTS   0
 #define TAUBIN_INVERSE_WEIGHTS   1
@@ -2381,7 +2382,7 @@ void MRIScheckIsPolyhedron(MRIS *mris, const char* file, int line);
 int StuffVertexCoords(MRIS *surf, int vertexno, double p[3]);
 int StuffFaceCoords(MRIS *surf, int faceno, int cornerno, double p[3]);
 double MinDistToTriangleBF(double p1[3], double p2[3], double p3[3], double ptest[3], double pmin[3], double dL);
-int MRISdistanceBetweenSurfacesExact(MRIS *surf1, MRIS *surf2);
+double MRISdistanceBetweenSurfacesExact(MRIS *surf1, MRIS *surf2);
 int MRISnorm2Pointset(MRIS *mris, int vno, double dstart, double dend, double dstep, FILE *fp);
 MRI *MRISextractNormalMask(MRIS *surf, int vno, double dstart, double dend, double dstep, double UpsampleFactor);
 MRI *MRISsampleProfile(MRIS *mris, MRI *mri, double dstart, double dend, double dstep, double sigma, int interptype, MRI *profile);

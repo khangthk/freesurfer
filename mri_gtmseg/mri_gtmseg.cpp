@@ -70,6 +70,7 @@ char *OutVolFile=NULL;
 char *SUBJECTS_DIR;
 int nthreads;
 COLOR_TABLE *ctMaster, *ctMerge=NULL;
+int nErodeWM = 0, ErodeWMTopo=1;
 
 /*---------------------------------------------------------------*/
 int main(int argc, char *argv[]) {
@@ -125,19 +126,55 @@ int main(int argc, char *argv[]) {
 
   ctMaster = TissueTypeSchema(NULL,"default-apr-2019+head");
 
+#if 0 // this stuff is better handled by a merge ct right now as TT is not embedded
+  if(0 && gtmseg->mergesegfile){
+    sprintf(tmpstr, "%s/%s/mri/%s", SUBJECTS_DIR, gtmseg->subject, gtmseg->mergesegfile);
+    printf("Loading header %s\n", tmpstr);
+    MRI *mergeseg = MRIreadHeader(tmpstr,MRI_VOLUME_TYPE_UNKNOWN);
+    if(mergeseg == NULL) return (1);
+    if(mergeseg->ct){
+      printf("Merging ctab %d %d\n",ctMaster->nentries,mergeseg->ct->nentries);
+      for(int n=0; n < gtmseg->mergesegids.size(); n++){
+	// may need to expand the number of segs in the ctab if largest merge seg larger
+	int segid = gtmseg->mergesegids[n];
+	COLOR_TABLE_ENTRY *cte2 = mergeseg->ct->entries[segid];
+	if(!cte2) {
+	  printf("ERROR: embedded ctab in mergeseg does not have %d\n",gtmseg->mergesegids[n]);
+	  return(1);
+	}
+	COLOR_TABLE_ENTRY *cte1 = ctMaster->entries[segid];
+	if(!cte1) {
+	  cte1 = (CTE*) calloc(sizeof(CTE),1);
+	  ctMaster->entries[segid] = cte1;
+	}
+	memcpy(cte1, cte2, sizeof(CTE));
+	// Currently, tissue type does not work because it cannot be
+	// written into or read from embedded ctab. Use merge ctab instead.
+	//if(mergeseg->ct->ctabTissueType == 0) cte1->TissueType = -1;
+	printf("%d %s  %d\n",segid,cte1->name,cte1->TissueType);
+      }
+    }
+    MRIfree(&mergeseg);
+    //CTABwriteFileASCIItt(ctMaster,"dng.ctab");
+  }
+#endif
+
   if(ctMerge) {
     printf("Merging CTAB master with merge ctab\n");
     CTABmerge(ctMaster,ctMerge);
   }
   printf("master tissue type schema %s\n",ctMaster->TissueTypeSchema);
 
-  //err = CTABwriteFileASCIItt(ctMaster,"master.ctab");
-  //if(err) exit(1);
-
   mytimer.reset();
   printf("Starting MRIgtmSeg()\n"); fflush(stdout);
   err = MRIgtmSeg(gtmseg);
   if(err) exit(1);
+
+  if(nErodeWM > 0){
+    printf("Eroding WM %d iterations, topo=%d\n",nErodeWM,ErodeWMTopo); fflush(stdout);
+    MRIerodeAndReplaceLabel(gtmseg->seg,  2, 5001, ErodeWMTopo, nErodeWM, gtmseg->seg);
+    MRIerodeAndReplaceLabel(gtmseg->seg, 41, 5002, ErodeWMTopo, nErodeWM, gtmseg->seg);
+  }
 
   printf("Computing colortable\n");
   ct = GTMSEGctab(gtmseg, ctMaster);
@@ -163,6 +200,12 @@ int main(int argc, char *argv[]) {
     if(ct == NULL) exit(1);
   }
   printf("tissue type schema %s\n",ct->TissueTypeSchema);
+
+  if(nErodeWM > 0){
+    int structure; COLOR_TABLE_ENTRY *cte;
+    structure = 5001; cte = ct->entries[structure]; sprintf(cte->name,"Left-Shell-Cerebral-White-Matter");
+    structure = 5002; cte = ct->entries[structure]; sprintf(cte->name,"Right-Shell-Cerebral-White-Matter");
+  }
 
   // embed color table in segmentation
   gtmseg->seg->ct = CTABdeepCopy(ct);
@@ -231,6 +274,16 @@ static int parse_commandline(int argc, char **argv) {
     else if(!strcasecmp(option, "--usf") || !strcasecmp(option, "--internal-usf")) {
       if(nargc < 1) CMDargNErr(option,1);
       sscanf(pargv[0],"%d",&gtmseg->USF);
+      nargsused = 1;
+    } 
+    else if(!strcasecmp(option, "--wm-erode")){
+      if(nargc < 1) CMDargNErr(option,1);
+      sscanf(pargv[0],"%d",&nErodeWM);
+      nargsused = 1;
+    } 
+    else if(!strcasecmp(option, "--wm-erode-topo")){
+      if(nargc < 1) CMDargNErr(option,1);
+      sscanf(pargv[0],"%d",&ErodeWMTopo);
       nargsused = 1;
     } 
     else if(!strcasecmp(option, "--output-usf")) {
@@ -316,16 +369,28 @@ static int parse_commandline(int argc, char **argv) {
       #endif
     } 
     else if(!strcasecmp(option, "--lhminmax")) {
-      if(nargc < 3) CMDargNErr(option,2);
+      if(nargc < 2) CMDargNErr(option,2);
       sscanf(pargv[0],"%d",&gtmseg->lhmin);
       sscanf(pargv[1],"%d",&gtmseg->lhmax);
       nargsused = 2;
     } 
     else if(!strcasecmp(option, "--rhminmax")) {
-      if(nargc < 3) CMDargNErr(option,2);
+      if(nargc < 2) CMDargNErr(option,2);
       sscanf(pargv[0],"%d",&gtmseg->rhmin);
       sscanf(pargv[1],"%d",&gtmseg->rhmax);
       nargsused = 2;
+    } 
+    else if(!strcasecmp(option, "--merge")) {
+      if(nargc < 2) CMDargNErr(option,2);
+      gtmseg->mergesegfile = pargv[0];
+      int nth = 1;
+      while(CMDnthIsArg(nargc, pargv, nth) ){
+	int segid;
+	sscanf(pargv[nth],"%d",&segid);
+	gtmseg->mergesegids.push_back(segid);
+	nth ++;
+      }
+      nargsused = nth;
     } 
 
     else {
@@ -360,10 +425,13 @@ static void print_usage(void) {
   printf("   --dmax dmax : distance from ctx for wmseg to be considered 'unsegmented' (%f)\n",gtmseg->dmax);
   printf("   --keep-hypo : do not convert WM hypointensities to a white matter label \n");
   printf("   --keep-cc : do not convert corpus callosum to a white matter label \n");
+  printf("   --wm-erode N : erode WM (2,41) by N, replacing with 5001 and 5002\n");
+  printf("   --wm-erode-topo topo : topology = 1,2,3 when eroding WM (default is %d)\n",ErodeWMTopo);
   printf("   --ctab ctab.lut : copy items in ctab.lut into master ctab merging or overwriting what is there \n");
   printf("   --lhminmax lhmin lhmax : for defining ribbon in apas (default: %d %d) \n",gtmseg->lhmin,gtmseg->lhmax);
   printf("   --rhminmax rhmin rhmax : for defining ribbon in apas (default: %d %d) \n",gtmseg->rhmin,gtmseg->rhmax);
   printf("   --output-usf OutputUSF : set actual output resolution. Default is to be the same as the --internal-usf");
+  printf("   --merge segname segid1 ... : mri/segname");
   printf("\n");
   #ifdef HAVE_OPENMP
   printf("   --threads N : use N threads (with Open MP)\n");
@@ -408,6 +476,8 @@ static void dump_options(FILE *fp) {
 }
 
 /*!
+  This is probably not needed anymore as I did not know that it was
+  here and re-implemented it as MRIerodeAndReplaceLabel()
   \fn MRI *MRIErodeWMSeg(MRI *seg, int nErode3d, MRI *outseg)
   Takes a segmentation and erodes WM by nErode3d, then sets the
   seg value in surviving voxels to 5001 or 5002, which is

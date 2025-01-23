@@ -81,9 +81,10 @@ install_configured(
   fsl_rigid_register
   fsl_sub_mgh
   fslregister
-  fsr-checkxopts
   fsr-coreg  
+  fsr-checkxopts
   fsr-getxopts
+  fsr-mergexopts
   fsr-longpreproc
   fsr-import
   fsvglrun
@@ -117,6 +118,7 @@ install_configured(
   isolate_labels.csh
   isolate_labels_keeporigval.csh
   jkgcatrain
+  josareg
   label-cortex
   label_child
   label_elderly_subject

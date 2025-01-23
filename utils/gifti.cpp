@@ -1339,14 +1339,14 @@ MRI *MRISreadGiftiAsMRI(const char *fname, int read_volume)
   {
     // The value at each node is a key into the LabelTable
     intent = MGZ_INTENT_LABEL;
-    version = ((intent & 0xff ) << 8) | MGH_VERSION;
+    version = ((intent & 0xffff ) << 8) | MGH_VERSION;
     dtype  = MRI_INT;
     ct = readLabelTable(image, fname);
   }
   else if (intent_code[intent_code_idx] == NIFTI_INTENT_SHAPE)
   {
     intent = MGZ_INTENT_SHAPE;
-    version = ((intent & 0xff ) << 8) | MGH_VERSION;
+    version = ((intent & 0xffff ) << 8) | MGH_VERSION;
   }
       
   printf("INFO: Found %d %s DataArray\n", frame_count, gifti_intent_to_string(intent_code[intent_code_idx]));
@@ -1869,7 +1869,8 @@ int MRISwriteGIFTILabel(MRIS *mris, gifti_image *image, int intent_code)
         //                                       mris->ct->entries[idx]->bi);
         // printf("%8.8X\n",labeltable.key[idx]);
 
-        printf("idx=%d, name=%s\n",idx,mris->ct->entries[n]->name);
+	if (Gdiag & DIAG_VERBOSE)
+          printf("[DEBUG] MRISwriteGIFTILabel(): idx=%d, name=%s\n",idx,mris->ct->entries[n]->name);
         labeltable.label[idx] = strcpyalloc(mris->ct->entries[n]->name);
 
         rgba[0] = mris->ct->entries[n]->rf;

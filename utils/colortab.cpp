@@ -755,7 +755,7 @@ COLOR_TABLE *CTABreadFromBinaryV2(FILE *fp)
   num_entries_to_read = freadInt(fp);
 
   if (Gdiag & DIAG_SHOW)
-    printf("[DEBUG] CTABreadFromBinaryV2(): ct->nentries=%d, num_entries_to_read=%d\n", ct->nentries, num_entries_to_read);
+    printf("[INFO] CTABreadFromBinaryV2(): ct->nentries=%d, num_entries_to_read=%d\n", ct->nentries, num_entries_to_read);
  
   /* For each entry, read in the info. */
   for (i = 0; i < num_entries_to_read; i++) {
@@ -1083,7 +1083,6 @@ COLOR_TABLE *znzCTABreadFromBinaryV2(znzFile fp)
   COLOR_TABLE *ct;
   int nentries, num_entries_to_read, i;
   int structure, len;
-  char *name;
   int t;
 
   /* Read the number of entries from the stream. Note that this is
@@ -1118,17 +1117,18 @@ COLOR_TABLE *znzCTABreadFromBinaryV2(znzFile fp)
                  "CTABreadFromBinaryV2: file name length "
                  "was %d",
                  len));
-  name = (char *)malloc(len + 1);
   /* 
    * if the file comes from surfa.io.fsio.write_binary_lookup_table(), len = 0.
    * if the file comes from freesurfer/utils/colortab.cpp::znzCTABwriteIntoBinaryV2(), len > 0.
    */
-  znzread(name, sizeof(char), len, fp);
-  strncpy(ct->fname, name, STRLEN-1);
-  free(name);
+  int toread = (len < STRLEN-1) ? len : STRLEN-1;
+  znzread(ct->fname, sizeof(char), toread, fp);
 
   /* Read the number of entries to read. */
   num_entries_to_read = znzreadInt(fp);
+  if (Gdiag & DIAG_INFO)
+    printf("[INFO] znzCTABreadFromBinaryV2(): fname = '%s' (%d bytes), ct->nentries=%d, num_entries_to_read=%d\n",
+	   ct->fname, toread, ct->nentries, num_entries_to_read);
 
   /* For each entry, read in the info. */
   for (i = 0; i < num_entries_to_read; i++) {
@@ -1170,9 +1170,8 @@ COLOR_TABLE *znzCTABreadFromBinaryV2(znzFile fp)
                    structure,
                    len));
     }
-    name = (char *)malloc(len + 1);
-    znzread(name, sizeof(char), len, fp);
-    strncpy(ct->entries[structure]->name, name, STRLEN-1);
+    toread = (len < STRLEN-1) ? len : STRLEN-1;
+    znzread(ct->entries[structure]->name, sizeof(char), toread, fp);
 
     /* Read in the color. */
     ct->entries[structure]->ri = znzreadInt(fp);
@@ -1696,6 +1695,9 @@ int CTABprintASCII(COLOR_TABLE *ct, FILE *fp)
   if (NULL == ct) ErrorReturn(ERROR_BADPARM, (ERROR_BADPARM, "CTABprintASCII: ct was NULL"));
   if (NULL == fp) ErrorReturn(ERROR_BADPARM, (ERROR_BADPARM, "CTABprintASCII: fp was NULL"));
 
+  if (Gdiag & DIAG_INFO)
+    printf("[DEBUG] CTABprintASCII(): fname = '%s' (%lu bytes)\n", ct->fname, strlen(ct->fname));
+
   for (structure = 0; structure < ct->nentries; structure++) {
     if (NULL != ct->entries[structure]) {
       tmpstr = deblank(ct->entries[structure]->name);
@@ -2051,6 +2053,14 @@ COLOR_TABLE *TissueTypeSchemaDefaultHead(COLOR_TABLE *ct)
       case non_WM_hypointensities:  // not sure
       case Left_undetermined:
       case Right_undetermined:
+      case 819: //sclimbic Left-HypoThal-noMB
+      case 820: //sclimbic Right-HypoThal-noMB
+      case 843: //sclimbic Left-MammillaryBody
+      case 844: //sclimbic Right-MammillaryBody
+      case 865: //sclimbic Left-Basal-Forebrain
+      case 866: //sclimbic Right-Basal-Forebrain
+      case 869: //sclimbic Left-SeptalNuc
+      case 870: //sclimbic Right-SeptalNuc
         TT = TTSubCtxGM;
         break;
 
@@ -2073,6 +2083,9 @@ COLOR_TABLE *TissueTypeSchemaDefaultHead(COLOR_TABLE *ct)
       case CC_Anterior:
       case 34: // wmcrowns, lh
       case 66: // wmcrowns, rh
+      case 821: //sclimbic Left-Fornix
+      case 822: //sclimbic Right-Fornix
+      case 853: //sclimbic Mid-Ant-Com
         TT = TTWM;
         break;
 

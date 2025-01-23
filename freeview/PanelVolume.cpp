@@ -133,7 +133,8 @@ PanelVolume::PanelVolume(QWidget *parent) :
                               << ui->labelMin
                               << ui->labelMax
                               << ui->checkBoxPercentile
-                              << ui->pushButtonResetWindowLevel;
+                              << ui->pushButtonResetWindowLevel
+                              << ui->checkBoxAutoWindowSlice;
 
   m_widgetlistLUT << ui->treeWidgetColorTable
                   << ui->labelLookUpTable
@@ -283,7 +284,7 @@ void PanelVolume::ConnectLayer( Layer* layer_in )
   connect( p, SIGNAL(OpacityChanged(double)), this, SLOT(UpdateOpacity(double)), Qt::UniqueConnection);
   connect( ui->doubleSpinBoxOpacity, SIGNAL(valueChanged(double)), p, SLOT(SetOpacity(double)) );
   connect( ui->checkBoxSmooth, SIGNAL(stateChanged(int)), p, SLOT(SetTextureSmoothing(int)) );
-  connect( ui->checkBoxShowContour, SIGNAL(clicked(bool)), p, SLOT(SetShowAsContour(bool)) );
+  connect( ui->checkBoxShowContour, SIGNAL(clicked(bool)), this, SLOT(OnSetShowAsContour(bool)) );
   connect( ui->checkBoxShowLabelContour, SIGNAL(clicked(bool)), p, SLOT(SetShowAsLabelContour(bool)) );
   connect( ui->sliderFrame, SIGNAL(valueChanged(int)), layer, SLOT(SetActiveFrame(int)) );
   connect( ui->spinBoxFrame, SIGNAL(valueChanged(int)), layer, SLOT(SetActiveFrame(int)) );
@@ -326,6 +327,7 @@ void PanelVolume::ConnectLayer( Layer* layer_in )
   connect( ui->pushButtonResetWindowLevel, SIGNAL(clicked(bool)), SLOT(OnButtonResetWindowLevel()));
   connect( ui->spinBoxVectorSkip, SIGNAL(valueChanged(int)), p, SLOT(SetVectorSkip(int)));
   connect( p, SIGNAL(AutoAdjustFrameContrastChanged(bool)), SLOT(OnAutoAdjustFrameContrastChanged(bool)), Qt::QueuedConnection);
+  connect( ui->checkBoxAutoWindowSlice, SIGNAL(toggled(bool)), p, SLOT(SetAutoWindowSlice(bool)));
 
   ui->colorLabelBrushValue->installEventFilter(this);
 }
@@ -476,6 +478,7 @@ void PanelVolume::DoUpdateWidgets()
     ui->checkBoxAutoSetMid->setChecked( layer->GetProperty()->GetHeatScaleAutoMid());
     ui->checkBoxSetMidToMin->setChecked( layer->GetProperty()->GetHeatScaleSetMidToMin());
 //    ui->checkBoxSetMidToMin->setEnabled(ui->checkBoxAutoSetMid->isChecked());
+    ui->checkBoxAutoWindowSlice->setChecked( layer->GetProperty()->GetAutoWindowSlice());
 
     ui->comboBoxColorMap->clear();
     ui->comboBoxColorMap->addItem( "Grayscale", LayerPropertyMRI::Grayscale );
@@ -2145,6 +2148,23 @@ void PanelVolume::OnCheckBoxSetOffsetToMean(bool b)
     if ( layer )
     {
       layer->GetProperty()->SetHeatScaleOffset(layer->GetProperty()->GetFrameMeanValue());
+    }
+  }
+}
+
+void PanelVolume::OnSetShowAsContour(bool b)
+{
+  QList<LayerMRI*> layers = GetSelectedLayers<LayerMRI*>();
+  foreach (LayerMRI* layer, layers)
+  {
+    if ( layer )
+    {
+      layer->GetProperty()->SetShowAsContour(b);
+      if (b && layer == GetCurrentLayer<LayerMRI*>() &&
+          layer->GetProperty()->GetColorMap() == LayerPropertyMRI::Heat)
+      {
+        UpdateWidgets();
+      }
     }
   }
 }

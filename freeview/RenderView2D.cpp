@@ -57,6 +57,7 @@
 #include "LayerPropertyPointSet.h"
 #include <QInputDialog>
 #include "DialogMovePoint.h"
+#include "LayerEditRef.h"
 
 RenderView2D::RenderView2D( QWidget* parent ) : RenderView( parent )
 {
@@ -344,6 +345,21 @@ void RenderView2D::OnSlicePositionChanged(bool bCenter)
       this->CenterAtCursor();
   }
 
+  if (MainWindow::GetMainWindow()->GetMainView() == this && m_selection2D->GetWidth() > 0)
+  {
+    QList<Layer*> layers = GetSelectWindowAdjustableLayers();
+    m_selection2D->UpdateWorldCoords();
+    for (int i = 0; i < layers.size(); i++)
+    {
+      LayerMRI* layer = qobject_cast<LayerMRI*>(layers[i]);
+      if (layer->GetProperty()->GetAutoWindowSlice() && layer->IsVisible())
+      {
+        StopSelection();
+        break;
+      }
+    }
+  }
+
   RenderView::OnSlicePositionChanged(bCenter);
 }
 
@@ -403,9 +419,8 @@ void RenderView2D::UpdateSelection( int nX, int nY )
   m_selection2D->SetBottomRight( nX, nY );
 }
 
-void RenderView2D::StopSelection()
+QList<Layer*> RenderView2D::GetSelectWindowAdjustableLayers()
 {
-  m_selection2D->Show( false );
   QList<Layer*> layers = MainWindow::GetMainWindow()->GetSelectedLayers("MRI");
   if (layers.size() < 2)
   {
@@ -427,6 +442,13 @@ void RenderView2D::StopSelection()
       }
     }
   }
+  return layers;
+}
+
+void RenderView2D::StopSelection()
+{
+  m_selection2D->Show( false );
+  QList<Layer*> layers = GetSelectWindowAdjustableLayers();
   
   for (int i = 0; i < layers.size(); i++)
   {
@@ -722,6 +744,21 @@ void RenderView2D::TriggerContextMenu( QMouseEvent* event )
         menu.exec(event->globalPos());
         return;
       }
+    }
+  }
+  else if (mainwnd->GetMode() == RenderView::IM_VoxelEdit)
+  {
+    LayerEditRef* ref = (LayerEditRef*)mainwnd->GetSupplementLayer("EditRef");
+    if (ref && ref->GetNumberOfMarks() > 0)
+    {
+      QAction* act;
+      act = new QAction("Apply to Edit", this);
+      connect(act, SIGNAL(triggered()), ref, SLOT(ApplyToMRI()));
+      menu.addAction(act);
+      act = new QAction("Clear Marks", this);
+      connect(act, SIGNAL(triggered()), ref, SLOT(Reset()));
+      menu.addAction(act);
+      menu.addSeparator();
     }
   }
 

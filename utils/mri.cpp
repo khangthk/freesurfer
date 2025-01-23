@@ -572,7 +572,7 @@ MRI *MRIallocHeader(int width, int height, int depth, int type, int nframes)
 
   Note: MRIgetVoxelToRasXform is #defined to be extract_i_to_r().
   ----------------------------------------------------------------*/
-MATRIX *MRIxfmCRS2XYZ(const VOL_GEOM *mri, int base)
+MATRIX *MRIxfmCRS2XYZ(const VOL_GEOM *mri, int base, bool useshear)
 {
   MATRIX *m;
   MATRIX *Pcrs, *PxyzOffset;
@@ -609,6 +609,19 @@ MATRIX *MRIxfmCRS2XYZ(const VOL_GEOM *mri, int base)
   *MATRIX_RELT(m, 4, 4) = 1.0;
 
   /* At this point, m = Mdc * D */
+  if (useshear && (mri->s_r > 1e-5 || mri->s_a > 1e-5 || mri->s_s > 1e-5))
+  {
+    MATRIX *matshear = MatrixIdentity(4, NULL);
+    *MATRIX_RELT(matshear, 1, 2) = (MRIxfmCRS2XYZPrecision)mri->s_r;
+    *MATRIX_RELT(matshear, 1, 3) = (MRIxfmCRS2XYZPrecision)mri->s_a;
+    *MATRIX_RELT(matshear, 2, 3) = (MRIxfmCRS2XYZPrecision)mri->s_s;
+    if (Gdiag & DIAG_INFO)
+    {
+      printf("[DEBUG] MRIxfmCRS2XYZ() matshear:\n");
+      MatrixPrint(stdout, matshear);
+    }
+    m = MatrixMultiplyD(m, matshear, NULL);
+  }
 
   /* Col, Row, Slice at the Center of the Volume */
   Pcrs = MatrixAlloc(4, 1, MATRIX_REAL);
@@ -6174,6 +6187,10 @@ MRI *MRIcopyHeader(const MRI *mri_src, MRI *mri_dst)
 
   if (mri_dst == NULL)
     mri_dst = MRIallocHeader(mri_src->width, mri_src->height, mri_src->depth, mri_src->type, mri_src->nframes);
+
+  // copy the version and intent
+  mri_dst->version = mri_src->version;
+  mri_dst->intent  = mri_src->intent;
 
   mri_dst->dof = mri_src->dof;
   mri_dst->mean = mri_src->mean;
@@ -12089,7 +12106,8 @@ MRI *MRIresampleFill(MRI *src, MRI *template_vol, int resample_type, float fill_
     MatrixPrint(stdout, m);
   }
 
-  int nframes_target = 1; // the target volume will have only one frame
+  // the dest can't have more frames than the src, or the program will crash
+  int nframes_target = (src->nframes <= template_vol->nframes) ? src->nframes : template_vol->nframes;
   dest = MRIallocSequence(
 			  template_vol->width, template_vol->height, template_vol->depth, src->type, nframes_target);
   if (dest == NULL) return (NULL);
