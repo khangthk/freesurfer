@@ -56,6 +56,14 @@ install_symlinks(
   DESTINATION lib/bem
 )
 
+if (BUILD_SCRIBBLE AND ${HOST_OS} MATCHES "Rocky8")
+   # install freeview ScribblePrompt .pt file under ./freesurfer/pytorch_models/
+   install(FILES
+     pytorch_models/traced_ScribblePrompt_UNet_nf192_res128.pt
+     DESTINATION pytorch_models
+   )
+endif()
+
 # these aren't required for recon-all, but will be installed by default
 if(NOT MINIMAL)
   add_subdirectory(diffusion)
