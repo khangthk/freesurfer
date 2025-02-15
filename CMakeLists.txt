@@ -158,6 +158,10 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 # Use host_os() to get HOST_OS to reference the correct 3rd party package build
 host_os()
 
+if(HOST_OS MATCHES "Rocky9")
+   set(CMAKE_DISABLE_FIND_PACKAGE_PETSC ON)
+endif()
+
 # -------- zlib --------
 find_package(ZLIB REQUIRED)
 add_definitions(-DHAVE_ZLIB -DITK_USE_SYSTEM_ZLIB)

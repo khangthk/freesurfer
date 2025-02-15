@@ -211,7 +211,10 @@ if(BUILD_GUIS AND VTK_FOUND AND TARGET vtkutils)
     freeview.qrc
   )
 
-  if(PETSC_FOUND AND NOT APPLE_ARM64)
+  host_os()
+
+  # turn off compile of profiling for some platforms
+  if(PETSC_FOUND AND (NOT APPLE_ARM64 OR NOT HOST_OS MATCHES "Rocky9"))
      set(SOURCES ${SOURCES} DialogLineProfile.cpp LayerLineProfile.cpp)
   endif()
 
@@ -279,7 +282,8 @@ if(BUILD_GUIS AND VTK_FOUND AND TARGET vtkutils)
 
   add_executable(freeview ${SOURCES})
 
-  if(PETSC_FOUND AND NOT ARM64)
+  # turn off compile of profiling for some platforms
+  if(PETSC_FOUND AND (NOT APPLE_ARM64 OR NOT HOST_OS MATCHES "Rocky9"))
      target_link_libraries(freeview
        nifti
        vtkutils
